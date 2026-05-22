@@ -39,6 +39,14 @@ from services.helper.error_logger import Panic
 
 @dataclass(frozen=True, slots=True)
 class MessageDTO:
+    """Model for Message
+    .name: str= to get author name (require: author_id)
+    .is_edited: bool = *self-explanatory* (require: edited_at)
+    .has_attachments: bool = *self-explanatory* (require: attachment_urls)
+    .to_dict: dict[str, Any] = converts the object itself to dict version // This is useful for MessageCollection
+    """
+    ID: Optional[int] # None, but auto-increment in MessageCollection
+    
     # Position attr
     message_id: int
     channel_id: int
@@ -65,6 +73,7 @@ class MessageDTO:
 
     def __post_init__(self) -> None:
             """Self-validation after object creation."""
+            self._validate_optional_positive_int("ID", self.ID)
             self._validate_positive_int("message_id", self.message_id)
             self._validate_positive_int("channel_id", self.channel_id)
             self._validate_optional_positive_int("guild_id", self.guild_id)
@@ -83,11 +92,12 @@ class MessageDTO:
             self._validate_attachment_urls(self.attachment_urls)
             self._validate_business_rules()
 
-        # -------------------------
-        # Derived / readable fields
-        # -------------------------
+    # -------------------------
+    # Derived / readable fields
+    # -------------------------
     @property
     def name(self) -> str:
+        """TODO: Implement author_id resolver by using module discord. This property not working for now."""
         """Readable name derived from author_id."""
         return self._resolve_author_name()
 
@@ -98,6 +108,25 @@ class MessageDTO:
     @property
     def has_attachments(self) -> bool:
         return len(self.attachment_urls) > 0
+    
+    @property
+    def to_dict(self) -> dict[str, Any]:
+        """Flat this object to dict, necessary for MessageColection later"""
+        _dict = {
+            "message_id": self.message_id,
+            "channel_id": self.channel_id,
+            "guild_id": self.guild_id,
+            "author_id": self.author_id,
+            "content": self.content,
+            "created_at": self.created_at.isoformat(),
+            "edited_at": self.edited_at.isoformat() if self.edited_at else None,
+            "reply_to_message_id": self.reply_to_message_id,
+            "attachment_urls": ",".join(self.attachment_urls) if self.attachment_urls else "",
+        }
+        # Only include id if explicitly set (otherwise let DB auto-increment)
+        if self.ID is not None:
+            _dict["ID"] = self.ID
+        return _dict
 
     # -------------------------
     # Private helpers
@@ -226,8 +255,10 @@ class MessageDTO:
                 note="MessageDTO reply relationship validation failed",
             )
 
+
 # INFO: Ensure everytime this object is used, all attribute are provided, if the given attribute value cannot be existing, assign None.
 # msg1 = MessageDTO(
+#         ID=None,
 #         message_id="stop",
 #         channel_id=10,
 #         guild_id=999,
