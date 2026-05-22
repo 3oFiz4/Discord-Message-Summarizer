@@ -45,7 +45,7 @@ class MessageDTO:
     .has_attachments: bool = *self-explanatory* (require: attachment_urls)
     .to_dict: dict[str, Any] = converts the object itself to dict version // This is useful for MessageCollection
     """
-    id: Optional[int] # None, but auto-increment in MessageCollection
+    ID: Optional[int] # None, but auto-increment in MessageCollection
     
     # Position attr
     message_id: int
@@ -73,7 +73,7 @@ class MessageDTO:
 
     def __post_init__(self) -> None:
             """Self-validation after object creation."""
-            self._validate_optional_positive_int("id", self.id)
+            self._validate_optional_positive_int("ID", self.ID)
             self._validate_positive_int("message_id", self.message_id)
             self._validate_positive_int("channel_id", self.channel_id)
             self._validate_optional_positive_int("guild_id", self.guild_id)
@@ -124,8 +124,8 @@ class MessageDTO:
             "attachment_urls": ",".join(self.attachment_urls) if self.attachment_urls else "",
         }
         # Only include id if explicitly set (otherwise let DB auto-increment)
-        if self.id is not None:
-            _dict["id"] = self.id
+        if self.ID is not None:
+            _dict["ID"] = self.ID
         return _dict
 
     # -------------------------
@@ -258,6 +258,7 @@ class MessageDTO:
 
 # INFO: Ensure everytime this object is used, all attribute are provided, if the given attribute value cannot be existing, assign None.
 # msg1 = MessageDTO(
+#         ID=None,
 #         message_id="stop",
 #         channel_id=10,
 #         guild_id=999,
