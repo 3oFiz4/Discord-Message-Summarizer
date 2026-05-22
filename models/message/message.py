@@ -33,7 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import ClassVar, Iterator, Optional
-
+from services.discord.formatting import format_timestamp
 import discord as dc
 from services.helper.error_logger import Panic
 
@@ -118,8 +118,8 @@ class MessageDTO:
             "guild_id": self.guild_id,
             "author_id": self.author_id,
             "content": self.content,
-            "created_at": self.created_at.isoformat(),
-            "edited_at": self.edited_at.isoformat() if self.edited_at else None,
+            "created_at": format_timestamp(self.created_at),
+            "edited_at": format_timestamp(self.edited_at) if self.edited_at else None,
             "reply_to_message_id": self.reply_to_message_id,
             "attachment_urls": ",".join(self.attachment_urls) if self.attachment_urls else "",
         }

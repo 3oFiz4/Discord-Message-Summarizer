@@ -4,7 +4,7 @@ from services.helper.config_manager import Config, JsonConfigSource, PythonConfi
 # Earlier = lower priority, later = overrides
 
 _sources = [
-    JsonConfigSource("config.json",  required=True),
+    PythonConfigSource("scraper_config.py",  required=True),
     EnvConfigSource(".env",            required=True),
 ]
 
