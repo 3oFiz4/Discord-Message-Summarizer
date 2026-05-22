@@ -49,6 +49,13 @@ class MessageCollection:
         self.execute("CREATE SEQUENCE IF NOT EXISTS messages_id_seq START 1")
         self.execute(f"CREATE TABLE IF NOT EXISTS {self._TABLE} ({self._SCHEMA})")
 
+    # Yeah it's a property lol...
+    @property
+    def to_dataframe(self) -> pd.DataFrame:
+        """Return entire collection as a pandas DataFrame."""
+        df = self.read()
+        return df if df is not None else pd.DataFrame()
+
     # =========================================================
     # CORE: execute
     # =========================================================
@@ -357,7 +364,7 @@ class _MessageProxy:
             row = df.iloc[0].to_dict
             return f"<_MessageProxy ID={self._ID} {row}>"
 
-# <------------------ TEST ---------------------> (all work)
+# <------------------ TEST --------------------->
 # collection = MessageCollection()
 #
 # msg1 = MessageDTO(
@@ -471,5 +478,10 @@ class _MessageProxy:
 # print(f"3 in collection = {3 in collection}")
 # print(collection)
 # print("OK")
+# # ---- Incase for DataScience ---- #
+# print(collection.execute(f"SELECT ID, content FROM {collection._TABLE}"))
+# df = collection.to_dataframe
+# print(df)
+# df.to_csv("output.csv") # export... cool rite?
 #
 # print("no error")
