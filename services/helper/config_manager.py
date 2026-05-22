@@ -225,6 +225,7 @@ class ConfigSource(ABC):
 #     }
 # }
 class JsonConfigSource(ConfigSource):
+    def load(self) -> dict[str, Any]:
         # MAIN LOADER
         #
         # PROCESS:
