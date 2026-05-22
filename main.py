@@ -5,7 +5,7 @@ from config import config
 from services.discord.discord_scraper import DiscordScraper
 import asyncio as aio
 from services.helper.console import console
-from services.discord.formatting import format_timestamp
+from services.helper.formatting import format_timestamp
 """
 config.DISCORD_TOKEN: env
 """
