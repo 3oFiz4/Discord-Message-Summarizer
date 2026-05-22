@@ -6,6 +6,52 @@ We separate models/ and services/ so that there exist two folders: message (rela
 
 This is one of the instance responsible for Discord Message in the future. There exist two objects under Message, they are: message (MessageDTO) and message_collection (MessageCollection).
 
+## Project Structure
+
+```
+
+discord_scraper/
+│
+├── init.py # Root package exports
+├── config.py # All tunable settings
+├── main.py # Entry point
+│
+├── panic/
+│ ├── init.py
+│ └── panic.py # Centralized error handler
+│
+├── utils/
+│ ├── init.py
+│ ├── formatting.py # Timestamp formatters
+│ └── console.py # Shared Rich console instance
+│
+├── dto/
+│ ├── init.py
+│ └── message_dto.py # MessageDTO dataclass
+│
+├── collection/
+│ ├── init.py
+│ └── message_collection.py # DuckDB-backed collection + proxy
+│
+├── export/
+│ ├── init.py
+│ └── exporter.py # CSV / JSON / Python export
+│
+├── validation/
+│ ├── init.py
+│ └── sql_validator.py # Pre-flight SQL checks
+│
+├── checkpoint/
+│ ├── init.py
+│ └── checkpoint_manager.py # Per-channel resume support
+│
+└── scraper/
+├── init.py
+├── channel_scraper.py # Producer — fetches from Discord API
+├── writer.py # Consumer — validates + writes to CSV
+└── discord_scraper.py # Orchestrator — manages lifecycle
+```
+
 ### MessageDTO
 
 Immutable data-transfer object (`@dataclass(frozen=True, slots=True)`).
@@ -590,6 +636,537 @@ coming soon...
 
 ## ArgsScraper (coming soon)
 
-## Config (coming soon)
+## Config
 
-## DiscordScraper (coming soon)
+### config_manager
+
+```text
+Config
+ ├── ConfigSource
+ │    ├── JsonConfigSource
+ │    ├── PythonConfigSource
+ │    └── EnvConfigSource
+ │
+ ├── load()
+ ├── reload()
+ └── require()
+
+Helpers
+ ├── _deep_merge()
+ ├── _normalize_keys()
+ ├── _parse_env_value()
+ └── _insert_nested()
+```
+
+```text
+                    +------------------+
+                    |      Config      |
+                    +------------------+
+                              ▲
+                              |
+                    +------------------+
+                    |  ConfigSection   |
+                    +------------------+
+
+                              ▲
+                              |
+                    +------------------+
+                    |   ConfigSource   | <<abstract>>
+                    +------------------+
+                     ▲        ▲       ▲
+                     |        |       |
+      +----------------+  +------------------+  +----------------+
+      |JsonConfigSource|  |PythonConfigSource|  |EnvConfigSource |
+      +----------------+  +------------------+  +----------------+
+```
+
+---
+
+#### 2. Class Diagram
+
+```text
++---------------------------------------------------+
+|                 ConfigSource                      |
+|---------------------------------------------------|
+| - path: Path                                      |
+| - required: bool                                  |
+|---------------------------------------------------|
+| + __init__(path, required=True)                   |
+| + _ensure_file() -> bool                          |
+| + load() -> dict[str, Any] <<abstract>>           |
++---------------------------------------------------+
+
+this is used by config.py
+```
+
+##### Explanation
+
+`ConfigSource` is the base abstraction.
+
+Every config loader:
+
+- has a filesystem path
+- knows whether the file is mandatory
+- must implement `.load()`
+
+---
+
+#### JsonConfigSource
+
+```text
++---------------------------------------------------+
+|               JsonConfigSource                    |
+|---------------------------------------------------|
+| + load() -> dict[str, Any]                        |
++---------------------------------------------------+
+```
+
+##### Responsibility
+
+Loads JSON files.
+
+Example:
+
+```json
+{
+  "database": {
+    "host": "localhost"
+  }
+}
+```
+
+---
+
+#### PythonConfigSource
+
+```text
++---------------------------------------------------+
+|              PythonConfigSource                   |
+|---------------------------------------------------|
+| + load() -> dict[str, Any]                        |
++---------------------------------------------------+
+```
+
+##### Responsibility
+
+Executes Python config files dynamically.
+
+Supports:
+
+```python
+CONFIG = {
+    "debug": True
+}
+```
+
+AND:
+
+```python
+DEBUG = True
+PORT = 8080
+```
+
+---
+
+#### EnvConfigSource
+
+```text
++---------------------------------------------------+
+|                EnvConfigSource                    |
+|---------------------------------------------------|
+| - separator: str                                  |
+|---------------------------------------------------|
+| + __init__(path, required=True, separator="__")   |
+| + load() -> dict[str, Any]                        |
++---------------------------------------------------+
+```
+
+##### Responsibility
+
+Loads `.env`-style config files.
+
+Supports nested keys:
+
+```env
+DATABASE__HOST=localhost
+```
+
+---
+
+#### ConfigSection
+
+```text
++---------------------------------------------------+
+|                 ConfigSection                     |
+|---------------------------------------------------|
+| - _data: dict[str, Any]                           |
+|---------------------------------------------------|
+| + __init__(data)                                  |
+| + __getattr__(name) -> Any                        |
+| + __getitem__(key) -> Any                         |
+| + get(key, default=None) -> Any                   |
+| + keys()                                          |
+| + items()                                         |
+| + values()                                        |
+| + to_dict() -> dict[str, Any]                     |
+| + __contains__(key) -> bool                       |
+| + __repr__() -> str                               |
++---------------------------------------------------+
+```
+
+---
+
+#### Config
+
+```text
++---------------------------------------------------+
+|                     Config                        |
+|---------------------------------------------------|
+| - sources: list[ConfigSource]                     |
+| - normalize_keys: bool                            |
+|---------------------------------------------------|
+| + __init__(*sources, normalize_keys=True)         |
+| + load() -> Config                                |
+| + reload() -> Config                              |
+| + require(dotted_key) -> Any                      |
++---------------------------------------------------+
+```
+
+---
+
+#### 3. Inheritance Flow
+
+```text
+ConfigSource
+    ├── JsonConfigSource
+    ├── PythonConfigSource
+    └── EnvConfigSource
+```
+
+---
+
+#### 4. Composition Relationship
+
+```text
+Config
+ └── contains many ConfigSource
+```
+
+Meaning:
+
+```python
+Config(
+    JsonConfigSource(...),
+    EnvConfigSource(...),
+)
+```
+
+The `Config` object orchestrates all loaders.
+
+---
+
+#### 5. Config Loading Sequence Diagram
+
+```text
+User
+ │
+ │  Config(...).load()
+ ▼
++-------------------+
+|      Config       |
++-------------------+
+          │
+          │ iterates sources
+          ▼
++-------------------+
+|   ConfigSource    |
++-------------------+
+          │
+          │ load()
+          ▼
++-------------------+
+|   Parsed Config   |
++-------------------+
+          │
+          │ normalize keys
+          ▼
++-------------------+
+| _normalize_keys() |
++-------------------+
+          │
+          │ merge
+          ▼
++-------------------+
+|   _deep_merge()   |
++-------------------+
+          │
+          ▼
++-------------------+
+| Final Config Data |
++-------------------+
+```
+
+---
+
+#### 6. Deep Merge Flow
+
+```text
+BASE CONFIG
+{
+  "db": {
+    "host": "localhost",
+    "port": 3306
+  }
+}
+
+OVERRIDE CONFIG
+{
+  "db": {
+    "port": 5432
+  }
+}
+
+RESULT
+{
+  "db": {
+    "host": "localhost",
+    "port": 5432
+  }
+}
+```
+
+---
+
+#### 7. Env Nested Key Flow
+
+```text
+DATABASE__HOST=localhost
+```
+
+Transforms into:
+
+```text
+DATABASE
+ └── HOST
+      └── localhost
+```
+
+Final dictionary:
+
+```python
+{
+    "database": {
+        "host": "localhost"
+    }
+}
+```
+
+---
+
+#### 8. Runtime Access Flow
+
+```python
+config.database.host
+```
+
+Execution path:
+
+```text
+Config
+  └── __getattr__("database")
+          ↓
+    returns ConfigSection
+          ↓
+ConfigSection
+  └── __getattr__("host")
+          ↓
+       "localhost"
+```
+
+---
+
+#### 9. Internal Helper Functions
+
+---
+
+#### `_deep_merge()`
+
+```text
+Purpose:
+Recursively merges dictionaries
+```
+
+---
+
+#### `_normalize_keys()`
+
+```text
+Purpose:
+Converts all keys to lowercase recursively
+```
+
+---
+
+#### `_parse_env_value()`
+
+```text
+Purpose:
+Converts string env values into Python types
+```
+
+Examples:
+
+```text
+"true"  -> True
+"123"   -> 123
+"3.14"  -> 3.14
+```
+
+---
+
+#### `_insert_nested()`
+
+```text
+Purpose:
+Creates nested dictionaries from separator keys
+```
+
+Example:
+
+```text
+DATABASE__HOST
+```
+
+becomes:
+
+```python
+{
+    "database": {
+        "host": ...
+    }
+}
+```
+
+---
+
+#### 10. Error Handling Architecture
+
+```text
+Any Failure
+     │
+     ▼
++-------------------+
+|      Panic()      |
++-------------------+
+```
+
+The system intentionally avoids silent failure.
+
+Failures include:
+
+- missing config file
+- malformed JSON
+- missing required keys
+- invalid Python config
+- invalid access
+
+---
+
+#### 11. Config Source Priority
+
+Order matters.
+
+```python
+Config(
+    JsonConfigSource("base.json"),
+    EnvConfigSource(".env")
+)
+```
+
+Flow:
+
+```text
+base.json
+    ↓
+merged with
+    ↓
+.env
+```
+
+Later sources override earlier sources.
+
+---
+
+#### 12. Object Responsibility Breakdown
+
+| Object             | Responsibility               |
+| ------------------ | ---------------------------- |
+| Config             | Main orchestrator            |
+| ConfigSection      | Nested config accessor       |
+| ConfigSource       | Abstract config loader       |
+| JsonConfigSource   | JSON parser                  |
+| PythonConfigSource | Python runtime config loader |
+| EnvConfigSource    | `.env` parser                |
+| \_deep_merge       | Recursive merge              |
+| \_normalize_keys   | Case normalization           |
+| \_parse_env_value  | Type parsing                 |
+| \_insert_nested    | Nested env creation          |
+
+## DiscordScraper
+
+```text
+main.py
+  │
+  │  uvloop.install()
+  │
+  ▼
+DiscordScraper.run()                        ◄── Orchestrator
+  │
+  ├── _resolve_channels()                   ◄── GET /guilds/{id}/channels
+  │
+  ├── asyncio.Queue(maxsize=10000)          ◄── Bounded buffer
+  ├── asyncio.Semaphore(5)                  ◄── Throttle concurrent HTTP
+  ├── asyncio.Event()                       ◄── Stop signal for Writer
+  │
+  ├── Writer.run(stop_event)                ◄── CONSUMER (1 task)
+  │     │
+  │     │  loop:
+  │     │    queue.get()
+  │     │    _ingest() → _normalise() → buffer
+  │     │    _maybe_flush()
+  │     │      ├── batch count ≥ 5?  → _flush() → CSV append
+  │     │      └── elapsed ≥ 10s?    → _flush() → CSV append
+  │     │
+  │     └── stop_event.is_set() & queue.empty() → final _flush()
+  │
+  ├── ChannelScraper("ch1").run()           ◄── PRODUCER (N tasks)
+  │     │
+  │     │  loop:
+  │     │    semaphore.acquire()
+  │     │    _fetch_batch()
+  │     │      ├── GET /channels/{id}/messages?before=X&limit=100
+  │     │      ├── 429 → wait retry_after
+  │     │      ├── 5xx → exponential backoff
+  │     │      └── 200 → return list[dict]
+  │     │    semaphore.release()
+  │     │    queue.put(batch)
+  │     │    checkpoint.save() every 1000 msgs
+  │     │    _maybe_human_delay()
+  │     │      ├── 5% chance → long pause 2-5s
+  │     │      └── 95% chance → jitter 0.5-1.3s
+  │     │    sleep(REQUEST_DELAY)
+  │     │
+  │     └── empty batch → done, checkpoint.clear()
+  │
+  ├── ChannelScraper("ch2").run()
+  ├── ChannelScraper("ch3").run()
+  └── ...
+
+CheckpointManager
+  ├── save(channel_id, last_msg_id, total)  → .checkpoints/{channel_id}.json
+  ├── load(channel_id)                      → resume point or None
+  └── clear(channel_id)                     → delete after completion
+
+config.py
+  └── All tunable knobs in one place
+```

@@ -1,0 +1,5 @@
+aiohttp==3.13.3
+duckdb==1.5.3
+pandas==3.0.3
+rich==15.0.0
+uvloop==0.22.1
