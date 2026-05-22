@@ -9,6 +9,46 @@ from typing import Any, ClassVar, Iterator, Optional, Union
 import duckdb
 import pandas as pd
 
+"""DEVELOPER NOTE
+Usage: (especially for branch ru)
+
+# This is how to initialize it
+collection = MessageCollection() 
+
+# This is how to add MessageDTO to the $collection, this creates a new row, try print(collection) after and see for it!
+message = MessageDTO( ID=None, message_id=3, channel_id=11, guild_id=999, author_id=1003, content="General discussion topic", created_at=datetime(2026, 5, 22, 11, 0, 0), edited_at=None, reply_to_message_id=None,)
+collection.create(message)
+
+# This will gives you all output, you can put SQL syntax within the parameter
+print(collection.read())
+print(collection.read(channel_id=2))
+
+# How to access? Just like accessing any array. 
+# REMEMBER: the [idx] is NOT the element index, but refers to ID.. so it does not start at collection[0] but instead collection[1]
+print(collection[1]) # first element
+print(collection[1]["message_id"]) # first element, get message_id
+
+# How to insert? This one is special, instead of .append, it uses native += operator
+collection[2] += message
+
+# How to update?
+collection.update(1, content="Hello everyone! (edited)", edited_at=datetime(2026, 5, 22, 10, 5, 0))
+
+# How to delete?
+# del collection[2] # deletes ID=2
+
+# is FOR-LOOP possible in here? YES...
+for row in collection:
+    print(row)
+
+# how to get length?
+print(len(collection))
+
+# how to convert to .csv?
+df = collection.to_dataframe # convers to pandas df
+df.to_csv("output.csv")
+"""
+
 # =========================================================
 # MESSAGE COLLECTION
 # =========================================================
