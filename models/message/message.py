@@ -33,7 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import ClassVar, Iterator, Optional
-from services.discord.formatting import format_timestamp
+from services.helper.formatting import format_timestamp
 import discord as dc
 from services.helper.error_logger import Panic
 

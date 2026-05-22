@@ -18,7 +18,7 @@ from typing import Any, Optional
 from config import config
 from models.message.message import MessageDTO
 from services.helper.error_logger import Panic
-from .formatting import format_timestamp_filesafe
+from ..helper.formatting import format_timestamp_filesafe
 from services.helper.console import console
 
 class Writer:
