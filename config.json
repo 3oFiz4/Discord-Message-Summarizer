@@ -1,0 +1,10 @@
+[
+  {
+    "discord_config": {
+      "output_folder_name": "output/",
+      "output_file_name": "scraped_{user_id}{channel_id}",
+      "scrape_message_max": 10000,
+      "scrape_message_chunk": 100
+    }
+  }
+]
