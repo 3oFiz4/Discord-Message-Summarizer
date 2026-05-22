@@ -195,7 +195,18 @@ class MessageCollection:
             Panic(TypeError, f"Index must be int, got {type(ID).__name__}",
                 solutions=["Use collection[42] with an integer ID"],
                 note="MessageCollection.__getitem__ type check failed")
-            return _MessageProxy(self, ID)
+            return None # Panic printed; return None <GuardRail>
+        return _MessageProxy(self, ID)
+    
+    def __setitem__(self, row_id: int, proxy: _MessageProxy) -> None:
+        """
+        Required for  collection[id] += dto  to work.
+        Python's  a[x] += y  desugars to  a[x] = a[x].__iadd__(y)
+        so __setitem__ must exist to receive the result.
+        """
+        # The actual insertion already happened inside __iadd__.
+        # This is a no-op receiver so Python doesn't raise TypeError.
+        pass
 
     def __delitem__(self, ID: int) -> None:
         """
@@ -311,7 +322,7 @@ class _MessageProxy:
     """
     # TODO: For dev, can you suggest another way to simplify it? Or maybe add another feature?
 
-    def __init__(self, collection: MessageCollection, id: int) -> None:
+    def __init__(self, collection: MessageCollection, ID: int) -> None:
             self._collection = collection
             self._ID = ID
 
@@ -331,12 +342,12 @@ class _MessageProxy:
 
     # ---------- collection[ID] += MessageDTO ----------
     def __iadd__(self, dto: MessageDTO) -> _MessageProxy:
-            if not isinstance(dto, MessageDTO):
-                Panic(TypeError, f"Can only += a MessageDTO, got {type(dto).__name__}",
-                    solutions=["Use:  collection[ID] += MessageDTO(...)"],
-                    note="_MessageProxy iadd type check failed")
-            self._collection.create(dto)
-            return self
+        if not isinstance(dto, MessageDTO):
+            Panic(TypeError, f"Can only += a MessageDTO, got {type(dto).__name__}",
+                solutions=["Use:  collection[id] += MessageDTO(...)"],
+                note="_MessageProxy iadd type check failed")
+        self._collection.create(dto)
+        return self
 
     # ---------- pretty print ----------
     def __repr__(self) -> str:
@@ -345,3 +356,120 @@ class _MessageProxy:
                 return f"<_MessageProxy ID={self._ID} NOT_FOUND>"
             row = df.iloc[0].to_dict
             return f"<_MessageProxy ID={self._ID} {row}>"
+
+# <------------------ TEST ---------------------> (all work)
+# collection = MessageCollection()
+#
+# msg1 = MessageDTO(
+#         ID=None,
+#         message_id=1,
+#         channel_id=10,
+#         guild_id=999,
+#         author_id=333,
+#         content="Hello everyone!",
+#         created_at=datetime.strptime("05/08/2006 14:5:20", "%m/%d/%Y %H:%M:%S"),
+#         edited_at=None,
+#         reply_to_message_id=None,
+#         attachment_urls=[],
+#     )
+# msg2 = MessageDTO(
+#         ID=None,
+#         message_id=2,
+#         channel_id=10,
+#         guild_id=999,
+#         author_id=1002,
+#         content="Hi Alice, welcome!",
+#         created_at=datetime(2026, 5, 22, 10, 1, 0),
+#         edited_at=datetime(2026, 5, 22, 10, 2, 0),
+#         reply_to_message_id=1,
+#         attachment_urls=["https://cdn.example.com/welcome.png"],
+#     )
+#
+# msg3 = MessageDTO(
+#         ID=None,
+#     message_id=3,
+#     channel_id=11,
+#     guild_id=999,
+#     author_id=1003,
+#     content="General discussion topic",
+#     created_at=datetime(2026, 5, 22, 11, 0, 0),
+#     edited_at=None,
+#     reply_to_message_id=None,
+# )
+#
+# collection.create(msg1)
+# collection.create(msg2)
+# collection.create(msg3)
+#
+# print("=== collection ===")
+# print(collection)
+# print("OK")
+#
+# # ---- READ (all) ----
+# print("=== read all ===")
+# print(collection.read())
+# print("OK")
+#
+# # ---- READ (filtered) ----
+# print("=== read channel_id=10 ===")
+# print(collection.read(channel_id=10))
+# print("OK")
+#
+# # ---- BRACKET ACCESS  collection[ID] ----
+# print("=== collection[1] === ISSSSSSUEEEEE")
+# proxy = collection[1]
+# print(proxy)
+# print("OK")
+#
+# # ---- BRACKET FIELD ACCESS  collection[ID][key] ----
+# print("=== collection[2]['content'] ===")
+# print(collection.read(ID=2))
+# print(collection[2]["content"])
+# print("OK")
+#
+# print("=== collection[2]['attachment_urls'] ===")
+# print(collection[2]["attachment_urls"])
+# print("OK")
+#
+# # ---- BRACKET INSERT  collection[ID] += MessageDTO(...) ----
+# print("=== collection[4] += MessageDTO(...) ===")
+# msg4 = MessageDTO(
+#     ID=5,
+#     message_id=4,
+#     channel_id=10,
+#     guild_id=999,
+#     author_id=1001,
+#     content="Another message from Alice",
+#     created_at=datetime(2026, 5, 22, 12, 0, 0),
+#     edited_at=None,
+#     reply_to_message_id=None,
+# )
+# print(collection[1])
+# print()
+#
+# # ---- UPDATE ----
+# print("=== update message 1 ===")
+# collection.update(1, content="Hello everyone! (edited)", edited_at=datetime(2026, 5, 22, 10, 5, 0))
+# print(collection[1])
+# print("OK")
+#
+# # ---- DELETE via bracket ----
+# print("=== del collection[3] ===")
+# del collection[3]
+# print(f"3 in collection: {3 in collection}")
+# print("OK")
+#
+# # ---- ITERATE ----
+# print("=== iterate ===")
+# for row in collection:
+#     print(row)
+# print("OK")
+#
+# # ---- LEN / CONTAINS ----
+# print(f"len = {len(collection)}")
+# print(f"1 in collection = {1 in collection}")
+# print(f"3 in collection = {3 in collection}")
+# print(collection)
+# print("OK")
+#
+# print("no error")
