@@ -1,4 +1,6 @@
 from __future__ import annotations
+from .message import MessageDTO
+from services.helper.error_logger import Panic
 
 import re
 from dataclasses import dataclass, field
@@ -19,24 +21,24 @@ class MessageCollection:
 
     Bracket access
     --------------
-    collection[id]          -> _MessageProxy  (read / field access)
-    collection[id][key]     -> single field value
-    collection[id] += dto   -> insert message
-    del collection[id]      -> delete message
+    collection[ID]          -> _MessageProxy  (read / field access)
+    collection[ID][key]     -> single field value
+    collection[ID] += dto   -> insert message
+    del collection[ID]      -> delete message
     """
 
     _TABLE = "messages"
     _SCHEMA = """
-        id                 INTEGER PRIMARY KEY
-        message_id         INTEGER NOT NULL,
-        channel_id         INTEGER NOT NULL,
-        guild_id           INTEGER,
-        author_id          INTEGER NOT NULL,
-        content            VARCHAR NOT NULL,
-        created_at         VARCHAR NOT NULL,
-        edited_at          VARCHAR,
+        ID                  INTEGER PRIMARY KEY DEFAULT nextval('messages_id_seq'),
+        message_id          INTEGER NOT NULL,
+        channel_id          INTEGER NOT NULL,
+        guild_id            INTEGER,
+        author_id           INTEGER NOT NULL,
+        content             VARCHAR NOT NULL,
+        created_at          VARCHAR NOT NULL,
+        edited_at           VARCHAR,
         reply_to_message_id INTEGER,
-        attachment_urls    VARCHAR
+        attachment_urls     VARCHAR
     """
 
     def __init__(self) -> None:
@@ -44,6 +46,7 @@ class MessageCollection:
         self._bootstrap()
 
     def _bootstrap(self) -> None:
+        self.execute("CREATE SEQUENCE IF NOT EXISTS messages_id_seq START 1")
         self.execute(f"CREATE TABLE IF NOT EXISTS {self._TABLE} ({self._SCHEMA})")
 
     # =========================================================
@@ -94,25 +97,28 @@ class MessageCollection:
                 note="MessageCollection.create type check failed",
             )
 
-        d = dto.to_dict()
+        d = dto.to_dict
         columns = ", ".join(d.keys())
         placeholders = ", ".join(["?"] * len(d))
         sql = f"INSERT INTO {self._TABLE} ({columns}) VALUES ({placeholders})"
         return self.execute(sql, list(d.values()))
 
     def read(
-        self,
-        *,
-        message_id: int | None = None,
-        channel_id: int | None = None,
-        author_id: int | None = None,
-        guild_id: int | None = None,
-        limit: int | None = None,
-    ) -> pd.DataFrame:
-        """SELECT messages with optional filters."""
+    self,
+    *,
+    ID: int | None = None,
+    message_id: int | None = None,
+    channel_id: int | None = None,
+    author_id: int | None = None,
+    guild_id: int | None = None,
+    limit: int | None = None,
+) -> pd.DataFrame:
         clauses: list[str] = []
         params: list[Any] = []
 
+        if ID is not None:
+            clauses.append("ID = ?")
+            params.append(ID)
         if message_id is not None:
             clauses.append("message_id = ?")
             params.append(message_id)
@@ -135,95 +141,82 @@ class MessageCollection:
         return self.execute(sql, params if params else None)
 
     def update(
-        self,
-        message_id: int,
-        *,
-        content: str | None = None,
-        edited_at: datetime | None = None,
-        attachment_urls: list[str] | None = None,
-    ) -> pd.DataFrame:
-        """UPDATE specific columns of a message."""
+    self,
+    ID: int,  # <-- primary key
+    *,
+    content: str | None = None,
+    edited_at: datetime | None = None,
+    attachment_urls: list[str] | None = None,
+) -> pd.DataFrame:
         sets: list[str] = []
         params: list[Any] = []
 
         if content is not None:
             sets.append("content = ?")
             params.append(content)
-
         if edited_at is not None:
             sets.append("edited_at = ?")
             params.append(edited_at.isoformat())
-
         if attachment_urls is not None:
             sets.append("attachment_urls = ?")
             params.append(",".join(attachment_urls))
 
         if not sets:
-            Panic(
-                ValueError,
-                "No fields provided to update",
-                solutions=["Pass at least one keyword argument: content, edited_at, attachment_urls"],
-                note="MessageCollection.update called with nothing to update",
-            )
+            Panic(ValueError, "No fields provided to update",
+                solutions=["Pass at least one keyword argument"],
+                note="MessageCollection.update called with nothing to update")
 
         set_clause = ", ".join(sets)
-        params.append(message_id)
-        sql = f"UPDATE {self._TABLE} SET {set_clause} WHERE message_id = ?"
+        params.append(ID)
+        sql = f"UPDATE {self._TABLE} SET {set_clause} WHERE ID = ?"
         return self.execute(sql, params)
 
-    def delete(self, message_id: int) -> pd.DataFrame:
-        """DELETE a message by its id."""
-        if not isinstance(message_id, int) or isinstance(message_id, bool):
-            Panic(
-                TypeError,
-                f"message_id must be int, got {type(message_id).__name__}",
-                solutions=["Pass an integer message_id"],
-                note="MessageCollection.delete type check failed",
-            )
-        sql = f"DELETE FROM {self._TABLE} WHERE message_id = ?"
-        return self.execute(sql, [message_id])
+    def delete(self, ID: int) -> pd.DataFrame:
+        if not isinstance(ID, int) or isinstance(ID, bool):
+            Panic(TypeError, f"ID must be int, got {type(ID).__name__}",
+                solutions=["Pass an integer ID"],
+                note="MessageCollection.delete type check failed")
+        sql = f"DELETE FROM {self._TABLE} WHERE ID = ?"
+        return self.execute(sql, [ID])
 
     # =========================================================
     # BRACKET ACCESS / OPERATOR OVERLOADS
     # =========================================================
-    def __getitem__(self, message_id: int) -> _MessageProxy:
+    def __getitem__(self, ID: int) -> _MessageProxy:
         """
-        collection[id]  -> returns a _MessageProxy
+        collection[ID]  -> returns a _MessageProxy
 
         Usage:
             collection[1]                # proxy object (shows row repr)
             collection[1]["content"]     # single field
             collection[1] += dto         # insert via proxy
         """
-        if not isinstance(message_id, int) or isinstance(message_id, bool):
-            Panic(
-                TypeError,
-                f"Index must be int, got {type(message_id).__name__}",
-                solutions=["Use collection[42] with an integer id"],
-                note="MessageCollection.__getitem__ type check failed",
-            )
-        return _MessageProxy(self, message_id)
+        if not isinstance(ID, int) or isinstance(ID, bool):
+            Panic(TypeError, f"Index must be int, got {type(ID).__name__}",
+                solutions=["Use collection[42] with an integer ID"],
+                note="MessageCollection.__getitem__ type check failed")
+            return _MessageProxy(self, ID)
 
-    def __delitem__(self, message_id: int) -> None:
+    def __delitem__(self, ID: int) -> None:
         """
-        del collection[id]  ->  deletes the message
+        del collection[ID]  ->  deletes the message
         """
-        self.delete(message_id)
+        self.delete(ID)
 
     def __len__(self) -> int:
         df = self.execute(f"SELECT COUNT(*) AS cnt FROM {self._TABLE}")
         return int(df.iloc[0]["cnt"])
 
-    def __contains__(self, message_id: int) -> bool:
+    def __contains__(self, ID: int) -> bool:
         df = self.execute(
-            f"SELECT 1 FROM {self._TABLE} WHERE message_id = ?", [message_id]
+            f"SELECT 1 FROM {self._TABLE} WHERE ID = ?", [ID]
         )
         return not df.empty
 
     def __iter__(self) -> Iterator[dict[str, Any]]:
         df = self.read()
         for _, row in df.iterrows():
-            yield row.to_dict()
+            yield row.to_dict
 
     def __repr__(self) -> str:
         return f"<MessageCollection rows={len(self)}>"
@@ -318,46 +311,37 @@ class _MessageProxy:
     """
     # TODO: For dev, can you suggest another way to simplify it? Or maybe add another feature?
 
-    def __init__(self, collection: MessageCollection, message_id: int) -> None:
-        self._collection = collection
-        self._message_id = message_id
+    def __init__(self, collection: MessageCollection, id: int) -> None:
+            self._collection = collection
+            self._ID = ID
 
-    # ---------- collection[id][key] ----------
+    # ---------- collection[ID][key] ----------
     def __getitem__(self, key: str) -> Any:
-        df = self._collection.read(message_id=self._message_id)
-        if df.empty:
-            Panic(
-                KeyError,
-                f"No message found with message_id={self._message_id}",
-                solutions=["Check the message_id exists in the collection"],
-                note="_MessageProxy __getitem__ failed",
-            )
-        valid_columns = list(df.columns)
-        if key not in valid_columns:
-            Panic(
-                KeyError,
-                f"Unknown field '{key}'",
-                solutions=[f"Valid fields: {valid_columns}"],
-                note="_MessageProxy field lookup failed",
-            )
-        return df.iloc[0][key]
+            df = self._collection.read(ID=self._ID)
+            if df.empty:
+                Panic(KeyError, f"No message found with ID={self._ID}",
+                    solutions=["Check the ID exists in the collection"],
+                    note="_MessageProxy __getitem__ failed")
+            valid_columns = list(df.columns)
+            if key not in valid_columns:
+                Panic(KeyError, f"Unknown field '{key}'",
+                    solutions=[f"Valid fields: {valid_columns}"],
+                    note="_MessageProxy field lookup failed")
+            return df.iloc[0][key]
 
-    # ---------- collection[id] += MessageDTO ----------
+    # ---------- collection[ID] += MessageDTO ----------
     def __iadd__(self, dto: MessageDTO) -> _MessageProxy:
-        if not isinstance(dto, MessageDTO):
-            Panic(
-                TypeError,
-                f"Can only += a MessageDTO, got {type(dto).__name__}",
-                solutions=["Use:  collection[id] += MessageDTO(...)"],
-                note="_MessageProxy iadd type check failed",
-            )
-        self._collection.create(dto)
-        return self
+            if not isinstance(dto, MessageDTO):
+                Panic(TypeError, f"Can only += a MessageDTO, got {type(dto).__name__}",
+                    solutions=["Use:  collection[ID] += MessageDTO(...)"],
+                    note="_MessageProxy iadd type check failed")
+            self._collection.create(dto)
+            return self
 
     # ---------- pretty print ----------
     def __repr__(self) -> str:
-        df = self._collection.read(message_id=self._message_id)
-        if df.empty:
-            return f"<_MessageProxy message_id={self._message_id} NOT_FOUND>"
-        row = df.iloc[0].to_dict()
-        return f"<_MessageProxy message_id={self._message_id} {row}>"
+            df = self._collection.read(ID=self._ID)
+            if df.empty:
+                return f"<_MessageProxy ID={self._ID} NOT_FOUND>"
+            row = df.iloc[0].to_dict
+            return f"<_MessageProxy ID={self._ID} {row}>"
