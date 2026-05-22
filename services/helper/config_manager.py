@@ -215,9 +215,23 @@ class ConfigSource(ABC):
     def load(self) -> dict[str, Any]:
         raise NotImplementedError
 
-
+# PURPOSE:
+# Load configuration from JSON files.
+#
+# EXAMPLE FILE:
+# {
+#     "database": {
+#         "host": "localhost"
+#     }
+# }
 class JsonConfigSource(ConfigSource):
-    def load(self) -> dict[str, Any]:
+        # MAIN LOADER
+        #
+        # PROCESS:
+        # 1. Ensure file exists
+        # 2. Parse JSON
+        # 3. Validate top-level object
+        # 4. Return dictionarydef load(self) -> dict[str, Any]:
         if not self._ensure_file():
             return {}
 
@@ -245,7 +259,24 @@ class JsonConfigSource(ConfigSource):
 
         return data
 
-
+# PURPOSE:
+# Load configuration from Python files.
+#
+# SUPPORTED:
+#
+# CONFIG = {
+#     "debug": True
+# }
+#
+# OR:
+#
+# DEBUG = True
+# PORT = 8080
+#
+# WHY USE PYTHON CONFIG?
+# - dynamic logic
+# - computed values
+# - easier advanced configuration
 class PythonConfigSource(ConfigSource):
     def load(self) -> dict[str, Any]:
         if not self._ensure_file():
@@ -301,7 +332,24 @@ class PythonConfigSource(ConfigSource):
         data = _deep_merge(data, uppercase_vars)
         return data
 
-
+# PURPOSE:
+# Load `.env`-style configuration files.
+#
+# EXAMPLE:
+#
+# DEBUG=true
+# DATABASE__HOST=localhost
+# DATABASE__PORT=3306
+#
+# OUTPUT:
+#
+# {
+#     "debug": True,
+#     "database": {
+#         "host": "localhost",
+#         "port": 3306
+#     }
+# }
 class EnvConfigSource(ConfigSource):
     def __init__(
         self,
@@ -311,7 +359,14 @@ class EnvConfigSource(ConfigSource):
     ):
         super().__init__(path, required=required)
         self.separator = separator
-
+    # MAIN LOADER
+    #
+    # PROCESS:
+    # 1. Read line-by-line
+    # 2. Ignore comments
+    # 3. Parse KEY=VALUE
+    # 4. Convert types
+    # 5. Insert nested keys
     def load(self) -> dict[str, Any]:
         if not self._ensure_file():
             return {}
@@ -342,7 +397,18 @@ class EnvConfigSource(ConfigSource):
 #  Config Object
 # ──────────────────────────────────────────────
 
-
+# PURPOSE:
+# Wrapper object around config dictionaries.
+#
+# FEATURES:
+# - dot access
+# - bracket access
+# - recursive nested sections
+#
+# EXAMPLE:
+#
+# config.database.host
+# config["database"]["host"]
 class ConfigSection:
     def __init__(self, data: dict[str, Any]):
         self._data = data
@@ -409,13 +475,44 @@ class ConfigSection:
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self._data})"
 
-
+# MAIN CONFIG OBJECT
+#
+# PURPOSE:
+# Combine multiple config sources into one object.
+#
+# EXAMPLE:
+#
+# config = Config(
+#     JsonConfigSource("config.json"),
+#     EnvConfigSource(".env")
+# ).load()
+#
+# ACCESS:
+# config.database.host
 class Config(ConfigSection):
     def __init__(self, *sources: ConfigSource, normalize_keys: bool = True):
         self.sources = list(sources)
         self.normalize_keys = normalize_keys
         super().__init__({})
-
+    # MAIN LOAD PROCESS
+    #
+    # PROCESS:
+    # 1. Load every source
+    # 2. Normalize keys
+    # 3. Merge all configs
+    # 4. Store final data
+    #
+    # MERGE ORDER:
+    # Later sources override earlier sources.
+    #
+    # EXAMPLE:
+    #
+    # Config(
+    #     JsonConfigSource("base.json"),
+    #     EnvConfigSource(".env")
+    # )
+    #
+    # `.env` values override `base.json`.
     def load(self) -> "Config":
         merged: dict[str, Any] = {}
 
